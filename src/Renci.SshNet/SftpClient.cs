@@ -1861,6 +1861,28 @@ namespace Renci.SshNet
             return ar.EndInvoke();
         }
 
+        string StripFileRevision(string filename)
+        {
+            var semicolonPos = filename.LastIndexOf(';');
+            if (semicolonPos != -1)
+                return filename.Remove(semicolonPos);
+            else
+                return filename;
+        }
+
+        int GetFileRevision(string filename)
+        {
+            var semicolonPos = filename.LastIndexOf(';');
+            if (semicolonPos != -1 && semicolonPos < filename.Length - 2)
+            {
+                var revisionString = filename.Substring(semicolonPos + 1);
+                int revision;
+                if (Int32.TryParse(revisionString, out revision))
+                    return revision;
+            }
+            return -1;
+        }
+
         private IEnumerable<FileInfo> InternalSynchronizeDirectories(string sourcePath, string destinationPath, string searchPattern, SftpSynchronizeDirectoriesAsyncResult asynchResult)
         {
             if (!Directory.Exists(sourcePath))
@@ -1882,7 +1904,22 @@ namespace Renci.SshNet
             {
                 if (destFile.IsDirectory)
                     continue;
-                destDict.Add(destFile.Name, destFile);
+
+                var cleanName = StripFileRevision(destFile.Name);
+                SftpFile otherFileVersion;
+                if (destDict.TryGetValue(cleanName, out otherFileVersion))
+                {
+                    var existingRevision = GetFileRevision(otherFileVersion.Name);
+                    var newRevision = GetFileRevision(destFile.Name);
+                    if (newRevision > existingRevision)
+                    {
+                        destDict[cleanName] = destFile;
+                    }
+                }
+                else
+                {
+                    destDict.Add(cleanName, destFile);
+                }
             }
 
             #endregion
