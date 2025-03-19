@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.IO;
+using System.Linq;
 using System.Net;
 using System.Runtime.CompilerServices;
 using System.Text;
@@ -2226,7 +2227,9 @@ namespace Renci.SshNet
             return ar.EndInvoke();
         }
 
-        string StripFileRevision(string filename)
+#pragma warning disable CA1822 // Mark members as static
+        private string StripFileRevision(string filename)
+#pragma warning restore CA1822 // Mark members as static
         {
             var semicolonPos = filename.LastIndexOf(';');
             if (semicolonPos != -1)
@@ -2235,7 +2238,7 @@ namespace Renci.SshNet
                 return filename;
         }
 
-        int GetFileRevision(string filename)
+        private int GetFileRevision(string filename)
         {
             var semicolonPos = filename.LastIndexOf(';');
             if (semicolonPos != -1 && semicolonPos < filename.Length - 2)
@@ -2248,37 +2251,99 @@ namespace Renci.SshNet
             return -1;
         }
 
-        private IEnumerable<FileInfo> InternalSynchronizeDirectories(string sourcePath, string destinationPath, string searchPattern, SftpSynchronizeDirectoriesAsyncResult asynchResult)
+        private IEnumerable<FileInfo> InternalSynchronizeDirectories(string sourcePath, string destinationPath, string searchPattern, SftpSynchronizeDirectoriesAsyncResult? asynchResult)
         {
             if (!Directory.Exists(sourcePath))
-            {
+
                 throw new FileNotFoundException(string.Format("Source directory not found: {0}", sourcePath));
-            }
+
+
 
             var uploadedFiles = new List<FileInfo>();
 
+
+
             var sourceDirectory = new DirectoryInfo(sourcePath);
 
-            using (var sourceFiles = sourceDirectory.EnumerateFiles(searchPattern).GetEnumerator())
+
+
+            var sourceFiles = sourceDirectory.EnumerateFiles(searchPattern, SearchOption.AllDirectories).ToList();
+
+            if (sourceFiles.Count == 0)
+
+                return uploadedFiles;
+
+
+
+            #region Existing Files at The Destination
+
+
+
+            var destFiles = InternalListDirectory(destinationPath, null, null);
+
+            var destDict = new Dictionary<string, SftpFile>();
+
+            foreach (var destFile in destFiles)
+
             {
+
                 if (destFile.IsDirectory)
+
                     continue;
 
+
+                destDict.Add(destFile.Name, (SftpFile)destFile);
+
+
+
+
+
                 var cleanName = StripFileRevision(destFile.Name);
+
+
                 SftpFile otherFileVersion;
+
+
+#pragma warning disable CS8600 // Converting null literal or possible null value to non-nullable type.
                 if (destDict.TryGetValue(cleanName, out otherFileVersion))
+
+
                 {
+
+
                     var existingRevision = GetFileRevision(otherFileVersion.Name);
+
+
                     var newRevision = GetFileRevision(destFile.Name);
+
+
                     if (newRevision > existingRevision)
+
+
                     {
-                        destDict[cleanName] = destFile;
+
+
+                        destDict[cleanName] = (SftpFile)destFile;
+
+
                     }
+
+
                 }
+
+
                 else
+
+
                 {
-                    destDict.Add(cleanName, destFile);
+
+
+                    destDict.Add(cleanName, (SftpFile)destFile);
+
+
                 }
+#pragma warning restore CS8600 // Converting null literal or possible null value to non-nullable type.
+
             }
 
             #endregion
@@ -2286,79 +2351,81 @@ namespace Renci.SshNet
             #region Upload the difference
 
             const Flags uploadFlag = Flags.Write | Flags.Truncate | Flags.CreateNewOrOpen;
+
             foreach (var localFile in sourceFiles)
+
             {
+
                 var isDifferent = !destDict.ContainsKey(localFile.Name);
 
+
+
                 if (!isDifferent)
+
                 {
-                    return uploadedFiles;
+
+                    var temp = destDict[localFile.Name];
+
+                    //  TODO:   Use md5 to detect a difference
+
+                    //ltang: File exists at the destination => Using filesize to detect the difference
+
+                    isDifferent = localFile.Length != temp.Length;
+
                 }
 
-                #region Existing Files at The Destination
 
-                var destFiles = InternalListDirectory(destinationPath, asyncResult: null, listCallback: null);
-                var destDict = new Dictionary<string, ISftpFile>();
-                foreach (var destFile in destFiles)
+
+                if (isDifferent)
+
                 {
-                    if (destFile.IsDirectory)
+
+                    var remoteFileName = string.Format(CultureInfo.InvariantCulture, @"{0}/{1}", destinationPath, localFile.Name);
+
+                    try
+
                     {
-                        continue;
-                    }
 
-                    destDict.Add(destFile.Name, destFile);
-                }
+                        using (var file = File.OpenRead(localFile.FullName))
 
-                #endregion
-
-                #region Upload the difference
-
-                const Flags uploadFlag = Flags.Write | Flags.Truncate | Flags.CreateNewOrOpen;
-                do
-                {
-                    var localFile = sourceFiles.Current;
-                    if (localFile is null)
-                    {
-                        continue;
-                    }
-
-                    var isDifferent = true;
-                    if (destDict.TryGetValue(localFile.Name, out var remoteFile))
-                    {
-                        // File exists at the destination, use filesize to detect if there's a difference
-                        isDifferent = localFile.Length != remoteFile.Length;
-                    }
-
-                    if (isDifferent)
-                    {
-                        var remoteFileName = string.Format(CultureInfo.InvariantCulture, @"{0}/{1}", destinationPath, localFile.Name);
-                        try
                         {
-#pragma warning disable CA2000 // Dispose objects before losing scope; false positive
-                            using (var file = File.OpenRead(localFile.FullName))
-#pragma warning restore CA2000 // Dispose objects before losing scope; false positive
-                            {
-                                InternalUploadFile(file, remoteFileName, uploadFlag, asyncResult: null, uploadCallback: null);
-                            }
 
-                            uploadedFiles.Add(localFile);
+                            InternalUploadFile(file, remoteFileName, uploadFlag, null, null);
 
-                            asynchResult?.Update(uploadedFiles.Count);
                         }
-                        catch (Exception ex)
+
+
+
+                        uploadedFiles.Add(localFile);
+
+
+
+                        if (asynchResult != null)
+
                         {
-                            throw new SshException($"Failed to upload {localFile.FullName} to {remoteFileName}", ex);
+
+                            asynchResult.Update(uploadedFiles.Count);
+
                         }
+
                     }
+
+                    catch (Exception ex)
+
+                    {
+
+                        throw new Exception(string.Format("Failed to upload {0} to {1}", localFile.FullName, remoteFileName), ex);
+
+                    }
+
                 }
-                while (sourceFiles.MoveNext());
+
             }
-
-            #endregion
 
             return uploadedFiles;
         }
 
+        #endregion
         #endregion
 
         /// <summary>

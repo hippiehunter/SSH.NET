@@ -191,3 +191,9 @@ dotnet_diagnostic.MA0042.severity = none
 
 # S3236: Caller information arguments should not be provided explicitly
 dotnet_diagnostic.S3236.severity = none
+
+# CS8625: Cannot convert null literal to non-nullable reference type.
+dotnet_diagnostic.CS8625.severity = warning
+
+# CA1822: Mark members as static
+dotnet_diagnostic.CA1822.severity = warning
