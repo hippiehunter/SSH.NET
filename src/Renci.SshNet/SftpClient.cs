@@ -2552,6 +2552,40 @@ namespace Renci.SshNet
         }
 
         /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="buffer"></param>
+        /// <returns></returns>
+        public static Span<byte> ConvertCrLfToLf(Span<byte> buffer)
+        {
+            if (buffer.IsEmpty)
+                return buffer;
+
+            // ASCII values for CR and LF
+            const byte CR = 13; // \r
+            const byte LF = 10; // \n
+
+            // Index for writing back to the buffer
+            int writeIndex = 0;
+
+            // Process the input span
+            for (int readIndex = 0; readIndex < buffer.Length; readIndex++)
+            {
+                // If we find a CR followed by LF, skip the CR
+                if (buffer[readIndex] == CR && readIndex + 1 < buffer.Length && buffer[readIndex + 1] == LF)
+                {
+                    continue; // Skip the CR, will add LF in next iteration
+                }
+
+                // Write the current byte back to the buffer (possibly at an earlier position)
+                buffer[writeIndex++] = buffer[readIndex];
+            }
+
+            // Return the possibly shortened span
+            return buffer.Slice(0, writeIndex);
+        }
+
+        /// <summary>
         /// Internals the upload file.
         /// </summary>
         /// <param name="input">The input.</param>
@@ -2582,6 +2616,8 @@ namespace Renci.SshNet
             var buffer = new byte[_sftpSession.CalculateOptimalWriteLength(_bufferSize, handle)];
 
             var bytesRead = input.Read(buffer, 0, buffer.Length);
+            var realBuffer = ConvertCrLfToLf(new Span<byte>(buffer, 0, bytesRead));
+            bytesRead = realBuffer.Length;
             var expectedResponses = 0;
             var responseReceivedWaitHandle = new AutoResetEvent(initialState: false);
 
@@ -2620,6 +2656,7 @@ namespace Renci.SshNet
                     offset += (ulong)bytesRead;
 
                     bytesRead = input.Read(buffer, 0, buffer.Length);
+                    bytesRead = ConvertCrLfToLf(new Span<byte>(buffer, 0, bytesRead)).Length;
                 }
                 else if (expectedResponses > 0)
                 {
