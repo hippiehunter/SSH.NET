@@ -2350,7 +2350,7 @@ namespace Renci.SshNet
 
             #region Upload the difference
 
-            const Flags uploadFlag = Flags.Write | Flags.Truncate | Flags.CreateNewOrOpen;
+            const Flags uploadFlag = Flags.Write | Flags.Truncate | Flags.CreateNew;
 
             foreach (var localFile in sourceFiles)
 
