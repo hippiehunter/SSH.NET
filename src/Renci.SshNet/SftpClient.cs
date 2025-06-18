@@ -2254,96 +2254,46 @@ namespace Renci.SshNet
         private IEnumerable<FileInfo> InternalSynchronizeDirectories(string sourcePath, string destinationPath, string searchPattern, SftpSynchronizeDirectoriesAsyncResult? asynchResult)
         {
             if (!Directory.Exists(sourcePath))
-
                 throw new FileNotFoundException(string.Format("Source directory not found: {0}", sourcePath));
 
-
-
             var uploadedFiles = new List<FileInfo>();
-
-
-
             var sourceDirectory = new DirectoryInfo(sourcePath);
-
-
-
             var sourceFiles = sourceDirectory.EnumerateFiles(searchPattern, SearchOption.AllDirectories).ToList();
 
             if (sourceFiles.Count == 0)
-
                 return uploadedFiles;
 
-
-
             #region Existing Files at The Destination
-
-
-
             var destFiles = InternalListDirectory(destinationPath, null, null);
-
             var destDict = new Dictionary<string, SftpFile>();
 
             foreach (var destFile in destFiles)
-
             {
-
                 if (destFile.IsDirectory)
-
                     continue;
-
 
                 destDict.Add(destFile.Name, (SftpFile)destFile);
 
-
-
-
-
                 var cleanName = StripFileRevision(destFile.Name);
-
 
                 SftpFile otherFileVersion;
 
-
 #pragma warning disable CS8600 // Converting null literal or possible null value to non-nullable type.
                 if (destDict.TryGetValue(cleanName, out otherFileVersion))
-
-
                 {
-
-
                     var existingRevision = GetFileRevision(otherFileVersion.Name);
-
-
                     var newRevision = GetFileRevision(destFile.Name);
 
-
                     if (newRevision > existingRevision)
-
-
                     {
-
-
                         destDict[cleanName] = (SftpFile)destFile;
-
-
                     }
-
-
                 }
-
-
                 else
-
-
                 {
-
-
                     destDict.Add(cleanName, (SftpFile)destFile);
-
-
                 }
 #pragma warning restore CS8600 // Converting null literal or possible null value to non-nullable type.
-
             }
 
             #endregion
@@ -2353,81 +2303,53 @@ namespace Renci.SshNet
             const Flags uploadFlag = Flags.Write | Flags.Truncate | Flags.CreateNewOrOpen;
 
             foreach (var localFile in sourceFiles)
-
             {
-
                 var isDifferent = !destDict.ContainsKey(localFile.Name);
 
-
-
                 if (!isDifferent)
-
                 {
-
                     var temp = destDict[localFile.Name];
 
                     //  TODO:   Use md5 to detect a difference
-
                     //ltang: File exists at the destination => Using filesize to detect the difference
 
                     isDifferent = localFile.Length != temp.Length;
-
                 }
 
-
-
                 if (isDifferent)
-
                 {
-
                     var remoteFileName = string.Format(CultureInfo.InvariantCulture, @"{0}/{1}", destinationPath, localFile.Name);
 
                     try
-
                     {
-
                         using (var file = File.OpenRead(localFile.FullName))
                         {
-                            if (destDict.ContainsKey(localFile.Name))
-                            {
-                                // If the file already exists at the destination, check if it is smaller than the local file
-                                // If it is, remove it before uploading the new version
-                                if (destDict[localFile.Name].Length < localFile.Length)
-                                {
-                                    _sftpSession?.RequestRemove(remoteFileName);
-                                }
-                            }
+                            //We tried this to delete before uploading, but it crashed!
+                            //if (destDict.ContainsKey(localFile.Name))
+                            //{
+                            //    // If the file already exists at the destination, check if it is smaller than the local file
+                            //    // If it is, remove it before uploading the new version
+                            //    if (destDict[localFile.Name].Length < localFile.Length)
+                            //    {
+                            //        _sftpSession?.RequestRemove(remoteFileName);
+                            //    }
+                            //}
 
                             InternalUploadFile(file, remoteFileName, uploadFlag, null, null);
-
                         }
-
-
 
                         uploadedFiles.Add(localFile);
 
-
-
                         if (asynchResult != null)
-
                         {
-
                             asynchResult.Update(uploadedFiles.Count);
-
                         }
-
                     }
-
                     catch (Exception ex)
-
                     {
-
                         throw new Exception(string.Format("Failed to upload {0} to {1}", localFile.FullName, remoteFileName), ex);
-
                     }
-
                 }
-
             }
 
             return uploadedFiles;
