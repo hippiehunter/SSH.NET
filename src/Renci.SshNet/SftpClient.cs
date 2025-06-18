@@ -2350,7 +2350,7 @@ namespace Renci.SshNet
 
             #region Upload the difference
 
-            const Flags uploadFlag = Flags.Write | Flags.Truncate | Flags.CreateNew;
+            const Flags uploadFlag = Flags.Write | Flags.Truncate | Flags.CreateNewOrOpen;
 
             foreach (var localFile in sourceFiles)
 
@@ -2387,8 +2387,16 @@ namespace Renci.SshNet
                     {
 
                         using (var file = File.OpenRead(localFile.FullName))
-
                         {
+                            if (destDict.ContainsKey(localFile.Name))
+                            {
+                                // If the file already exists at the destination, check if it is smaller than the local file
+                                // If it is, remove it before uploading the new version
+                                if (destDict[localFile.Name].Length < localFile.Length)
+                                {
+                                    _sftpSession?.RequestRemove(remoteFileName);
+                                }
+                            }
 
                             InternalUploadFile(file, remoteFileName, uploadFlag, null, null);
 
