@@ -2295,60 +2295,39 @@ namespace Renci.SshNet
                 }
 #pragma warning restore CS8600 // Converting null literal or possible null value to non-nullable type.
             }
-
             #endregion
 
-            #region Upload the difference
+            #region Upload all files, always delete remote file first
 
             const Flags uploadFlag = Flags.Write | Flags.Truncate | Flags.CreateNewOrOpen;
 
             foreach (var localFile in sourceFiles)
             {
-                var isDifferent = !destDict.ContainsKey(localFile.Name);
+                var remoteFileName = string.Format(CultureInfo.InvariantCulture, @"{0}/{1}", destinationPath, localFile.Name);
 
-                if (!isDifferent)
+                try
                 {
-                    var temp = destDict[localFile.Name];
+                    // Always delete the remote file if it exists
+                    if (Exists(remoteFileName))
+                    {
+                        DeleteFile(remoteFileName);
+                    }
 
-                    //  TODO:   Use md5 to detect a difference
-                    //ltang: File exists at the destination => Using filesize to detect the difference
+                    using (var file = File.OpenRead(localFile.FullName))
+                    {
+                        InternalUploadFile(file, remoteFileName, uploadFlag, null, null);
+                    }
 
-                    isDifferent = localFile.Length != temp.Length;
+                    uploadedFiles.Add(localFile);
+
+                    if (asynchResult != null)
+                    {
+                        asynchResult.Update(uploadedFiles.Count);
+                    }
                 }
-
-                if (isDifferent)
+                catch (Exception ex)
                 {
-                    var remoteFileName = string.Format(CultureInfo.InvariantCulture, @"{0}/{1}", destinationPath, localFile.Name);
-
-                    try
-                    {
-                        using (var file = File.OpenRead(localFile.FullName))
-                        {
-                            //We tried this to delete before uploading, but it crashed!
-                            //if (destDict.ContainsKey(localFile.Name))
-                            //{
-                            //    // If the file already exists at the destination, check if it is smaller than the local file
-                            //    // If it is, remove it before uploading the new version
-                            //    if (destDict[localFile.Name].Length < localFile.Length)
-                            //    {
-                            //        _sftpSession?.RequestRemove(remoteFileName);
-                            //    }
-                            //}
-
-                            InternalUploadFile(file, remoteFileName, uploadFlag, null, null);
-                        }
-
-                        uploadedFiles.Add(localFile);
-
-                        if (asynchResult != null)
-                        {
-                            asynchResult.Update(uploadedFiles.Count);
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        throw new Exception(string.Format("Failed to upload {0} to {1}", localFile.FullName, remoteFileName), ex);
-                    }
+                    throw new Exception(string.Format("Failed to upload {0} to {1}", localFile.FullName, remoteFileName), ex);
                 }
             }
 
