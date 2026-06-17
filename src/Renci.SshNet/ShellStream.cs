@@ -811,13 +811,18 @@ namespace Renci.SshNet
         }
 
         /// <summary>
-        /// Writes the specified text to the shell.
+        /// Sends a window change request to the server, which may adjust the size of the shell's pseudo-terminal.
         /// </summary>
-        /// <param name="text">The text to be written to the shell.</param>
-        /// <remarks>
-        /// If <paramref name="text"/> is <see langword="null"/>, nothing is written.
-        /// Otherwise, <see cref="Flush"/> is called after writing the data to the buffer.
-        /// </remarks>
+        /// <param name="columns"></param>
+        /// <param name="rows"></param>
+        /// <param name="width"></param>
+        /// <param name="height"></param>
+        public void SendWindowChangeRequest(uint columns, uint rows, uint width, uint height)
+        {
+            ThrowHelper.ThrowObjectDisposedIf(_disposed, this);
+            _channel.SendWindowChangeRequest(columns, rows, width, height);
+        }
+
         /// <exception cref="ObjectDisposedException">The stream is closed.</exception>
         public void Write(string? text)
         {

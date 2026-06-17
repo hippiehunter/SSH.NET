@@ -276,6 +276,54 @@ namespace Renci.SshNet
         }
 
         /// <summary>
+        /// Uploads the specified file into a remote directory, bypassing POSIX path extraction.
+        /// Use this overload when the remote directory uses non-POSIX syntax (e.g. OpenVMS
+        /// <c>SYS$SYSDEVICE:[SURVEY]</c>) where the standard <see cref="Upload(FileInfo, string)"/>
+        /// would incorrectly derive <c>.</c> as the target directory and fail.
+        /// </summary>
+        /// <param name="fileInfo">The file to upload.</param>
+        /// <param name="remoteDirectory">
+        /// The remote directory passed verbatim to <c>scp -t -d</c>. The file is created inside
+        /// this directory using <paramref name="fileInfo"/>.<see cref="FileSystemInfo.Name"/> as
+        /// the file name.
+        /// </param>
+        /// <exception cref="ArgumentNullException"><paramref name="fileInfo"/> is <see langword="null"/>.</exception>
+        /// <exception cref="ArgumentNullException"><paramref name="remoteDirectory"/> is <see langword="null"/>.</exception>
+        /// <exception cref="SshException">The secure copy execution request was rejected by the server.</exception>
+        /// <exception cref="SshConnectionException">Client is not connected.</exception>
+        public void UploadToDirectory(FileInfo fileInfo, string remoteDirectory)
+        {
+            ThrowHelper.ThrowIfNull(fileInfo);
+            ThrowHelper.ThrowIfNull(remoteDirectory);
+
+            if (Session is null)
+            {
+                throw new SshConnectionException("Client not connected.");
+            }
+
+            using (var input = ServiceFactory.CreatePipeStream())
+            using (var channel = Session.CreateChannelSession())
+            {
+                channel.DataReceived += (sender, e) => input.Write(e.Data, 0, e.Data.Length);
+                channel.Closed += (sender, e) => input.Dispose();
+                channel.Open();
+
+                if (!channel.SendExecRequest($"scp -t -d {_remotePathTransformation.Transform(remoteDirectory)}"))
+                {
+                    throw SecureExecutionRequestRejectedException();
+                }
+
+                CheckReturnCode(input);
+
+                using (var source = fileInfo.OpenRead())
+                {
+                    UploadFileModeAndName(channel, input, source.Length, fileInfo.Name);
+                    UploadFileContent(channel, input, source, fileInfo.Name);
+                }
+            }
+        }
+
+        /// <summary>
         /// Uploads the specified file to the remote host.
         /// </summary>
         /// <param name="fileInfo">The file system info.</param>
